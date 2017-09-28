@@ -173,7 +173,8 @@ void ifc_close6(void)
 static void ifc_init_ifr(const char *name, struct ifreq *ifr)
 {
     memset(ifr, 0, sizeof(struct ifreq));
-    strlcpy(ifr->ifr_name, name, IFNAMSIZ);
+    strncpy(ifr->ifr_name, name, IFNAMSIZ);
+    ifr->ifr_name[IFNAMSIZ - 1] = 0;
 }
 
 int ifc_get_hwaddr(const char *name, void *ptr)
@@ -624,26 +625,23 @@ int ifc_disable(const char *ifname)
 int ifc_reset_connections(const char *ifname, const int reset_mask)
 {
 #if defined(__ANDROID__)
-    int result = 0, success;
+    int result, success;
     in_addr_t myaddr = 0;
     struct ifreq ifr;
     struct in6_ifreq ifr6;
-    int ctl_sock = -1;
 
     if (reset_mask & RESET_IPV4_ADDRESSES) {
         /* IPv4. Clear connections on the IP address. */
-        ctl_sock = socket(AF_INET, SOCK_DGRAM, 0);
-        if (ctl_sock >= 0) {
-            if (!(reset_mask & RESET_IGNORE_INTERFACE_ADDRESS)) {
-                ifc_get_info(ifname, &myaddr, NULL, NULL);
-            }
-            ifc_init_ifr(ifname, &ifr);
-            init_sockaddr_in(&ifr.ifr_addr, myaddr);
-            result = ioctl(ctl_sock, SIOCKILLADDR,  &ifr);
-            close(ctl_sock);
-        } else {
-            result = -1;
+        ifc_init();
+        if (!(reset_mask & RESET_IGNORE_INTERFACE_ADDRESS)) {
+            ifc_get_info(ifname, &myaddr, NULL, NULL);
         }
+        ifc_init_ifr(ifname, &ifr);
+        init_sockaddr_in(&ifr.ifr_addr, myaddr);
+        result = ioctl(ifc_ctl_sock, SIOCKILLADDR,  &ifr);
+        ifc_close();
+    } else {
+        result = 0;
     }
 
     if (reset_mask & RESET_IPV6_ADDRESSES) {
@@ -653,18 +651,14 @@ int ifc_reset_connections(const char *ifname, const int reset_mask)
          * So we clear all unused IPv6 connections on the device by specifying an
          * empty IPv6 address.
          */
-        ctl_sock = socket(AF_INET6, SOCK_DGRAM, 0);
+        ifc_init6();
         // This implicitly specifies an address of ::, i.e., kill all IPv6 sockets.
         memset(&ifr6, 0, sizeof(ifr6));
-        if (ctl_sock >= 0) {
-            success = ioctl(ctl_sock, SIOCKILLADDR,  &ifr6);
-            if (result == 0) {
-                result = success;
-            }
-            close(ctl_sock);
-        } else {
-            result = -1;
+        success = ioctl(ifc_ctl_sock6, SIOCKILLADDR,  &ifr6);
+        if (result == 0) {
+            result = success;
         }
+        ifc_close6();
     }
 
     return result;
@@ -732,8 +726,6 @@ ifc_configure(const char *ifname,
     property_set(dns_prop_name, dns1 ? ipaddr_to_string(dns1) : "");
     snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns2", ifname);
     property_set(dns_prop_name, dns2 ? ipaddr_to_string(dns2) : "");
-    snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.gw", ifname);
-    property_set(dns_prop_name, gateway ? ipaddr_to_string(gateway) : "");
 
     return 0;
 }

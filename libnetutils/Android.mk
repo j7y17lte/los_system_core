@@ -7,6 +7,10 @@ LOCAL_SRC_FILES := \
         ifc_utils.c \
         packet.c
 
+#-> CSCFEATURE_WIFI_SUPPORTPPPOE SUPPORT
+LOCAL_SRC_FILES += pppoe_utils.c
+#<- CSCFEATURE_WIFI_SUPPORTPPPOE SUPPORT
+
 LOCAL_SHARED_LIBRARIES := \
         libcutils \
         liblog
